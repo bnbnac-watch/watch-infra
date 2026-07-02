@@ -53,3 +53,22 @@ services:
     restart: unless-stopped
     environment:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+
+  watch-ai:
+    image: watch-ai
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+  crawler-yt-channels:
+    image: crawler-yt-channels
+    restart: unless-stopped
+    environment:
+      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+
+  crawler-kakao-channels:
+    image: crawler-kakao-channels
+    restart: unless-stopped
+    depends_on:
+      - watch-playwright
