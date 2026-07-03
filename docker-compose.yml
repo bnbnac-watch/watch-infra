@@ -20,12 +20,6 @@ services:
     ports:
       - "8001:8080"
 
-  crawler-bobplus:
-    image: crawler-bobplus
-    restart: unless-stopped
-    depends_on:
-      - watch-playwright
-
   crawler-workhub:
     image: crawler-workhub
     restart: unless-stopped
@@ -47,12 +41,6 @@ services:
       - watch-playwright
     environment:
       - SEARCH_KEYWORD=${WANTED_KEYWORD}
-
-  crawler-woltube:
-    image: crawler-woltube
-    restart: unless-stopped
-    environment:
-      - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
 
   watch-ai:
     image: watch-ai
