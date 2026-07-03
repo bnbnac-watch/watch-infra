@@ -31,16 +31,12 @@ services:
     restart: unless-stopped
     depends_on:
       - watch-playwright
-    environment:
-      - SEARCH_KEYWORD=${SARAMIN_KEYWORD}
 
   crawler-wanted:
     image: crawler-wanted
     restart: unless-stopped
     depends_on:
       - watch-playwright
-    environment:
-      - SEARCH_KEYWORD=${WANTED_KEYWORD}
 
   watch-ai:
     image: watch-ai
