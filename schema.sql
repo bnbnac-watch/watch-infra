@@ -7,6 +7,7 @@ CREATE TABLE crawlers (
     fail_count   INTEGER NOT NULL DEFAULT 0,
     container    TEXT NOT NULL,            -- Docker 서비스 이름 (http://{container}:8080/crawl)
     params       JSONB,                    -- 크롤러 컨테이너에 POST body로 전달할 파라미터
+    filter       JSONB,                    -- null 또는 {"title_keywords": ["단어", ...]} (매칭 아이템만 알림 대상)
     post_process JSONB,                    -- null 또는 {"type": "summarize", "provider": "gemini"}
     batch_group  TEXT                      -- null이면 독립 job, 값이 있으면 해당 batch job에서 처리
 );
