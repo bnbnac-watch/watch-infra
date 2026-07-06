@@ -30,8 +30,6 @@ services:
   crawler-saramin:
     image: crawler-saramin
     restart: unless-stopped
-    depends_on:
-      - watch-playwright
 
   crawler-wanted:
     image: crawler-wanted
