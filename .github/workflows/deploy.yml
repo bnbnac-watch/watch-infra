@@ -10,3 +10,6 @@ jobs:
     steps:
       - name: Pull latest infra config
         run: git -C $HOME/watch-infra pull
+
+      - name: Apply infra config
+        run: bash $HOME/watch-infra/apply.sh
