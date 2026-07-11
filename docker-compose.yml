@@ -46,6 +46,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash}
       - RPD_LIMIT=${RPD_LIMIT:-1500}
       - SUMMARIZER=${SUMMARIZER:-transcript}
 
