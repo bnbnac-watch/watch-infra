@@ -2,6 +2,7 @@ services:
   watch-playwright:
     image: watch-playwright
     restart: unless-stopped
+    ipc: host
     environment:
       - MAX_CONCURRENCY=${MAX_CONCURRENCY:-1}
 
