@@ -24,3 +24,15 @@
 ### summarizers/gemini_native.py: Gemini fileData API 직접 호출
 - 추후 구글측 토큰 완화 시 구현 (260702 현재 약 40분짜리 영상 정도 감당 가능)
 - [ ] `watch-ai/summarizers/gemini_native.py`: Gemini fileData API 직접 호출 (`BaseSummarizer` 구현)
+
+### fail_count로 자동 비활성화된 크롤러가 복구 후에도 방치됨
+- 배경: Wolf 크롤러(id=5)가 2026-07-11경 원인 불명 실패 6회 후 `MAX_FAIL_COUNT`(5) 초과로 `enabled=false` 자동 전환. 정작 원인(API/네트워크 등)은 그 직후 해소됐지만, 자동 재활성화 로직이 없어 20일간 알림이 안 나간 채 방치됨. 실패 당시 로그도 도커 로그 로테이션으로 유실돼 원래 원인은 특정 못 함.
+- watch-runner는 실패 시 자동 OFF만 있고, 임계치 근접/도달이나 실제 비활성화 발생을 알리는 경로가 전혀 없어서 사람이 우연히 눈치채기 전까지 무한정 방치될 수 있음.
+- [ ] fail_count가 임계치에 도달해 `enabled=false`로 전환되는 시점에 Discord(또는 별도 destination)로 경고 발송
+- [ ] 또는 주기적으로 `enabled=false`인 크롤러 목록을 점검해 알려주는 헬스체크 job 추가
+
+### 컨테이너 로그를 SD카드가 아닌 원격(DB 호스트)으로
+- 배경: odroid N2+가 SD카드로 부팅/운영 중이라 로그 write가 누적되면 SD 수명에 안 좋음. 실제로 Wolf 이슈 조사 때도 로컬 로그 로테이션 주기가 짧아서 실패 당시 로그가 이미 유실돼 있었음.
+- DB가 있는 호스트(HC4)엔 SSD/HDD가 있으니, 거기로 로그를 포워딩하면 SD 마모와 로그 유실 문제를 같이 줄일 수 있음.
+- [ ] docker `syslog` 로깅 드라이버로 HC4의 rsyslog에 포워딩 (컨테이너 추가 없이 가장 가벼운 방법)
+- [ ] 네트워크/호스트 단절 시 유실 허용 범위를 어느 정도로 볼지 결정 필요
