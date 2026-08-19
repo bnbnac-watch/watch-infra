@@ -76,12 +76,12 @@ HC4 (DB 서버, 원격)
 
 | 변수 | 용도 |
 |---|---|
-| `DATABASE_URL` | PostgreSQL 연결 문자열 (HC4) — watch-runner/sender/ai가 사용 |
+| `DATABASE_URL` | PostgreSQL 연결 문자열 (HC4) — watch-runner/sender/ai/admin이 사용 |
 | `YOUTUBE_API_KEY` | crawler-yt-channels가 사용 |
 | `GEMINI_API_KEY` | watch-ai가 사용 |
 | `MAX_CONCURRENCY` | watch-playwright의 동시 Chromium 인스턴스 수 (기본 1) |
 | `SUMMARIZE_CONCURRENCY` | watch-runner가 watch-ai를 호출하는 동시성 제한 (기본 4) |
-| `MAX_FAIL_COUNT` | watch-runner가 크롤러를 자동 비활성화하는 연속 실패 횟수 (기본 5) |
+| `MAX_FAIL_COUNT` | watch-runner가 크롤러를 자동 비활성화하는 연속 실패 횟수 (기본 5). watch-admin도 크롤러 목록 UI에서 실패 중인 크롤러(fail_count ≥ 이 값)를 강조 표시하는 데 사용 |
 | `RPD_LIMIT` | watch-ai의 일일 요약 요청 한도 (기본 1500) |
 | `SUMMARIZER` | watch-ai가 사용할 요약 구현체 (기본 `transcript`) |
 
@@ -92,7 +92,7 @@ HC4 (DB 서버, 원격)
 `schema.sql`에 정의된 테이블:
 
 ```sql
-crawlers            -- 실행 단위. schedule, container, params, filter, post_process, batch_group
+crawlers            -- 실행 단위. schedule, container, params, filter, post_process, batch_group, last_error(마지막 실패 시 에러 메시지, watch-admin에서 조회)
 seen_items          -- 중복 감지. PK(crawler_id, item_id), ON DELETE CASCADE 없음
 destinations        -- 발송 대상. type(discord|slack|telegram), config JSONB
 crawler_destinations -- crawler ↔ destination 매핑

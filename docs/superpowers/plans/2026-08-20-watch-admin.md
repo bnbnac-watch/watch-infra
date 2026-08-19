@@ -1702,13 +1702,15 @@ git branch -M main
 git push -u origin main
 ```
 
-- [ ] **Step 2: Confirm `watch-admin`'s own CI built the image**
+- [ ] **Step 2: Confirm `watch-admin`'s own CI built the image (expect the "Restart service" step to fail — that's normal here)**
 
 ```bash
 gh run list --repo bnbnac-watch/watch-admin --limit 3
 ```
 
-Expected: latest run `completed`, `success`. If the self-hosted runner isn't registered for this new repo, register it first (same process used for the other 9 repos — check the org's runner settings) before this step will succeed.
+Expected: the latest run shows `completed`, `failure` — NOT success. This is expected: the run's "Build image" step succeeds (confirms the image built correctly), but its "Restart service" step (`docker compose ... up -d --no-deps watch-admin`) fails with `no such service: watch-admin`, because `watch-infra`'s `docker-compose.yml` on the host doesn't have the `watch-admin` block yet at this point in the sequence — that lands in Step 4 below. The image itself is what matters here, and Step 3 verifies it landed. Don't troubleshoot this "failure."
+
+If the self-hosted runner isn't registered for this new repo, register it first (same process used for the other 9 repos — check the org's runner settings) before this step will succeed.
 
 - [ ] **Step 3: Verify the image exists on N2+**
 
@@ -1733,6 +1735,41 @@ git push origin main
 
 ```bash
 gh run list --workflow=deploy.yml --repo bnbnac-watch/watch-infra --limit 3
+```
+
+Expected: latest run `completed`, `success`.
+
+- [ ] **Step 5b: Re-run `watch-admin`'s deploy workflow so its CI history ends green**
+
+```bash
+gh run rerun --repo bnbnac-watch/watch-admin $(gh run list --repo bnbnac-watch/watch-admin --limit 1 --json databaseId --jq '.[0].databaseId')
+```
+
+Expected: this run now shows `completed`, `success` — the compose file has the `watch-admin` block now (from Step 4), so the "Restart service" step succeeds this time.
+
+- [ ] **Step 5c: Verify production database state before pushing `watch-runner`**
+
+Ask the user to run on N2+ (or wherever `psql` can reach HC4):
+
+```bash
+psql "$DATABASE_URL" -c "SELECT version FROM schema_migrations ORDER BY version;"
+```
+
+Expected: the list includes `20260820000000` (this branch's migration) alongside the pre-existing `20260711000001`, `20260711000002`, `20260715150000`. Do not proceed to Step 5d until this is confirmed — `watch-runner`'s new code depends on the `last_error` column existing.
+
+- [ ] **Step 5d: Push `watch-runner`'s `last_error` tracking**
+
+Only after Step 5c confirms the migration is live:
+
+```bash
+cd C:\Users\sj\Documents\work\code\coft\watch-runner\.worktrees\watch-admin-last-error
+git push origin watch-admin-last-error:main
+```
+
+(Or merge the branch through whatever the org's normal merge process is — this plan doesn't prescribe PR review, just push-to-main, matching this org's existing lightweight workflow for every other repo in this project.)
+
+```bash
+gh run list --workflow=deploy.yml --repo bnbnac-watch/watch-runner --limit 3
 ```
 
 Expected: latest run `completed`, `success`.
