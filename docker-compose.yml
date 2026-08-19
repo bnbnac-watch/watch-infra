@@ -2,6 +2,7 @@ services:
   watch-playwright:
     image: watch-playwright
     restart: unless-stopped
+    init: true
     ipc: host
     environment:
       - MAX_CONCURRENCY=${MAX_CONCURRENCY:-1}
@@ -9,12 +10,14 @@ services:
   watch-sender:
     image: watch-sender
     restart: unless-stopped
+    init: true
     environment:
       - DATABASE_URL=${DATABASE_URL}
 
   watch-runner:
     image: watch-runner
     restart: unless-stopped
+    init: true
     depends_on:
       - watch-playwright
       - watch-sender
@@ -28,22 +31,26 @@ services:
   crawler-workhub:
     image: crawler-workhub
     restart: unless-stopped
+    init: true
     depends_on:
       - watch-playwright
 
   crawler-saramin:
     image: crawler-saramin
     restart: unless-stopped
+    init: true
 
   crawler-wanted:
     image: crawler-wanted
     restart: unless-stopped
+    init: true
     depends_on:
       - watch-playwright
 
   watch-ai:
     image: watch-ai
     restart: unless-stopped
+    init: true
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -54,11 +61,13 @@ services:
   crawler-yt-channels:
     image: crawler-yt-channels
     restart: unless-stopped
+    init: true
     environment:
       - YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
 
   crawler-kakao-channels:
     image: crawler-kakao-channels
     restart: unless-stopped
+    init: true
     depends_on:
       - watch-playwright

@@ -44,6 +44,9 @@ HC4 (DB 서버, 원격)
 **`watch-playwright`를 단일 상시 브라우저 서버로 둔 이유**
 크롤러마다 각자 Chromium을 띄우면 리소스 통제가 안 된다. 대신 브라우저 서버를 하나 두고 크롤러들이 HTTP로 렌더 요청만 보내면, `watch-playwright` 내부 `Semaphore(MAX_CONCURRENCY)`로 동시 Chromium 인스턴스 수를 한곳에서 강제할 수 있다. `RenderCrawler`는 "무엇을 렌더할지"(`render_request`)와 "렌더 결과를 어떻게 파싱할지"(`parse`)만 구현하고, 브라우저 조종 자체는 하지 않는다.
 
+**모든 서비스에 `init: true`를 넣은 이유**
+각 서비스 Dockerfile은 `CMD ["python", "main.py"]`로 컨테이너 안에서 python이 PID 1로 직접 실행된다. 리눅스에서 PID 1은 자신이 직접 spawn하지 않은(재부모화된) 자식 프로세스를 reap하지 않는다는 특성이 있는데, `watch-playwright`가 렌더 요청마다 새로 띄우는 Chromium(+렌더러/GPU 자식 프로세스)이 메모리 압박으로 OOM killer에 죽으면 그 자식들이 python(PID 1)으로 재부모화된 채 좀비로 영구히 쌓인다. 실제로 이게 누적되어 프로세스 테이블/유저 프로세스 한도(`ulimit -u`, `pid_max`)에 도달했고, N2+ 서버가 `fork: retry: Resource temporarily unavailable` 에러로 완전히 응답 불능이 되어 재부팅한 사고가 있었다(2026-08-19). `init: true`는 Docker Compose가 내장 tini를 컨테이너 PID 1로 붙여서, 재부모화된 고아 프로세스를 tini가 대신 `wait()`하게 만드는 표준적인 해법이다.
+
 **동시성 제어**: `watch-runner/executor.py`가 크롤러 호출을 `Semaphore(1)`로 제한해 크롤러 컨테이너 호출이 한 번에 하나씩만 나가도록 강제한다. cron 스케줄은 크롤러마다 제각각이다 — 채널 성격에 맞는 폴링 주기를 각자 갖도록 설계된 것이지, 충돌을 피하려고 시각을 흩뿌린 것이 아니다. 실제 운영 DB 기준으로도 BobPlus·Wolf처럼 즉시성이 중요한 채널은 `*/5 * * * *`(5분마다)를, 나머지 대부분(WorkHub, Saramin/Wanted의 SLAM·VIO 배치 그룹, 유튜브 구독 채널들)은 `0 7,17 * * *`(하루 2회, 07:00/17:00 KST)를 공유해서 쓴다 — 즉 같은 스케줄을 쓰는 크롤러 10개가 정확히 같은 순간에 같이 트리거된다. 이 동시 트리거를 실제로 순차화해서 흡수하는 게 위 세마포어다.
 
 ## Docker Compose 서비스
