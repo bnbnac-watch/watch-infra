@@ -351,12 +351,11 @@ import os
 
 import httpx
 
-WATCH_RUNNER_URL = os.environ.get("WATCH_RUNNER_URL", "http://watch-runner:8080")
-
 
 async def call_reload(client: httpx.AsyncClient) -> bool:
+    watch_runner_url = os.environ.get("WATCH_RUNNER_URL", "http://watch-runner:8080")
     try:
-        res = await client.post(f"{WATCH_RUNNER_URL}/reload", timeout=10)
+        res = await client.post(f"{watch_runner_url}/reload", timeout=10)
         res.raise_for_status()
         return True
     except Exception:
@@ -790,9 +789,9 @@ async def list_crawlers(request: Request):
     crawlers = await db.list_crawlers()
     reload_error = request.query_params.get("reload_error") is not None
     return templates.TemplateResponse(
+        request,
         "list.html",
         {
-            "request": request,
             "crawlers": crawlers,
             "reload_error": reload_error,
             "max_fail_count": MAX_FAIL_COUNT,
@@ -1034,9 +1033,9 @@ async def edit_form(request: Request, crawler_id: int):
     if crawler is None:
         raise HTTPException(status_code=404)
     return templates.TemplateResponse(
+        request,
         "edit.html",
         {
-            "request": request,
             "crawler": crawler,
             "params_raw": _json_dump(crawler["params"]),
             "filter_raw": _json_dump(crawler["filter"]),
@@ -1177,9 +1176,9 @@ async def save(
     if errors:
         crawler = await db.get_crawler(crawler_id)
         return templates.TemplateResponse(
+            request,
             "edit.html",
             {
-                "request": request,
                 "crawler": {
                     **crawler,
                     "enabled": enabled is not None,
