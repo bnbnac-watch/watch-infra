@@ -1,2 +1,4 @@
 .env
 seed.sql
+
+.worktrees/
