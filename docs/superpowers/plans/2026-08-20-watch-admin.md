@@ -1762,7 +1762,7 @@ Expected: the list includes `20260820000000` (this branch's migration) alongside
 Only after Step 5c confirms the migration is live:
 
 ```bash
-cd C:\Users\sj\Documents\work\code\coft\watch-runner\.worktrees\watch-admin-last-error
+cd /c/Users/sj/Documents/work/code/coft/watch-runner/.worktrees/watch-admin-last-error
 git push origin watch-admin-last-error:main
 ```
 
