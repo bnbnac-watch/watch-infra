@@ -7,6 +7,7 @@
 
 ```
 N2+ (메인 앱 서버, ARM64)
+├── watch-admin             # 크롤러 제어용 admin 페이지
 ├── watch-playwright        # 단일 브라우저 서버
 ├── watch-runner            # 스케줄러 + 중복감지 + 오케스트레이션
 ├── watch-sender            # 라우팅 + 알림 발송
@@ -23,7 +24,7 @@ HC4 (DB 서버, 원격)
     └── photos DB     ← 별개 앱과 공유 (동일 인스턴스, 다른 DB)
 ```
 
-전부 하나의 ARM64 서버(N2+)에 Docker Compose로 올라가고, DB만 별도 서버(HC4)를 쓴다. 서버가 하나뿐이므로 서비스 간 통신은 전부 Docker 내부 네트워크(서비스명 DNS)로 이뤄지고, 외부에 노출되는 포트는 `watch-runner`의 `8001`(수동 `/reload`, `/status` 호출용) 하나뿐이다.
+전부 하나의 ARM64 서버(N2+)에 Docker Compose로 올라가고, DB만 별도 서버(HC4)를 쓴다. 서버가 하나뿐이므로 서비스 간 통신은 전부 Docker 내부 네트워크(서비스명 DNS)로 이뤄지고, 외부에 노출되는 포트는 `watch-runner`의 `8001`(수동 `/reload`, `/status` 호출용)과 `watch-admin`의 `8002`(크롤러 제어 UI) 두 개뿐이다. 둘 다 앱 레벨 인증은 없고, 라우터에서 포트포워딩을 하지 않는 이상 LAN/Tailscale 안에서만 닿는 걸 전제로 한다.
 
 ## 왜 이런 구조인가
 
@@ -47,6 +48,9 @@ HC4 (DB 서버, 원격)
 **모든 서비스에 `init: true`를 넣은 이유**
 각 서비스 Dockerfile은 `CMD ["python", "main.py"]`로 컨테이너 안에서 python이 PID 1로 직접 실행된다. 리눅스에서 PID 1은 자신이 직접 spawn하지 않은(재부모화된) 자식 프로세스를 reap하지 않는다는 특성이 있는데, `watch-playwright`가 렌더 요청마다 새로 띄우는 Chromium(+렌더러/GPU 자식 프로세스)이 메모리 압박으로 OOM killer에 죽으면 그 자식들이 python(PID 1)으로 재부모화된 채 좀비로 영구히 쌓인다. 실제로 이게 누적되어 프로세스 테이블/유저 프로세스 한도(`ulimit -u`, `pid_max`)에 도달했고, N2+ 서버가 `fork: retry: Resource temporarily unavailable` 에러로 완전히 응답 불능이 되어 재부팅한 사고가 있었다(2026-08-19). `init: true`는 Docker Compose가 내장 tini를 컨테이너 PID 1로 붙여서, 재부모화된 고아 프로세스를 tini가 대신 `wait()`하게 만드는 표준적인 해법이다.
 
+**`watch-admin`을 별도 서비스로 분리한 이유**
+크롤러 enabled 토글과 설정 편집을 DB 직접 UPDATE로 처리하다가, 실패 알림이 연속으로 쏟아지는 상황에서 대응이 늦어진 사고가 있었다(2026-08). `watch-runner`가 이미 `:8001`에 HTTP API와 DB 커넥션을 갖고 있었지만, 스케줄링·오케스트레이션이라는 책임에 admin UI를 얹으면 그 책임이 섞인다 — "서비스마다 별도 repo/컨테이너" 컨벤션을 그대로 따라 `watch-admin`을 분리했다. `watch-admin`은 `crawlers` 테이블을 직접 읽고 쓰되, 실제로 스케줄에 반영하는 건 여전히 `watch-runner`의 `POST /reload`에 위임한다 — "중복 감지를 runner가 담당하는 이유"와 같은 맥락으로, 스케줄러 상태를 두 서비스가 따로 들고 있지 않게 하기 위해서다.
+
 **동시성 제어**: `watch-runner/executor.py`가 크롤러 호출을 `Semaphore(1)`로 제한해 크롤러 컨테이너 호출이 한 번에 하나씩만 나가도록 강제한다. cron 스케줄은 크롤러마다 제각각이다 — 채널 성격에 맞는 폴링 주기를 각자 갖도록 설계된 것이지, 충돌을 피하려고 시각을 흩뿌린 것이 아니다. 실제 운영 DB 기준으로도 BobPlus·Wolf처럼 즉시성이 중요한 채널은 `*/5 * * * *`(5분마다)를, 나머지 대부분(WorkHub, Saramin/Wanted의 SLAM·VIO 배치 그룹, 유튜브 구독 채널들)은 `0 7,17 * * *`(하루 2회, 07:00/17:00 KST)를 공유해서 쓴다 — 즉 같은 스케줄을 쓰는 크롤러 10개가 정확히 같은 순간에 같이 트리거된다. 이 동시 트리거를 실제로 순차화해서 흡수하는 게 위 세마포어다.
 
 ## Docker Compose 서비스
@@ -56,6 +60,7 @@ HC4 (DB 서버, 원격)
 | `watch-playwright` | 단일 브라우저 렌더 서버 | - | - |
 | `watch-sender` | 라우팅 + 알림 발송 | - | - |
 | `watch-runner` | 스케줄러 + 중복감지 + 오케스트레이션 | `8001:8080` | watch-playwright, watch-sender |
+| `watch-admin` | 크롤러 제어 admin 페이지 | `8002:8080` | - |
 | `watch-ai` | Gemini 기반 영상 요약 | - | - |
 | `crawler-workhub` | 네이버 카페 크롤러 | - | watch-playwright |
 | `crawler-saramin` | 사람인 크롤러 | - | - |
