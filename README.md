@@ -87,6 +87,8 @@ HC4 (DB 서버, 원격)
 | `MAX_FAIL_COUNT` | watch-runner가 크롤러를 자동 비활성화하는 연속 실패 횟수 (기본 5). watch-admin도 크롤러 목록 UI에서 실패 중인 크롤러(fail_count ≥ 이 값)를 강조 표시하는 데 사용 |
 | `RPD_LIMIT` | watch-ai의 일일 요약 요청 한도 (기본 1500) |
 | `SUMMARIZER` | watch-ai가 사용할 요약 구현체 (기본 `transcript`) |
+| `AI_CONCURRENCY` | watch-ai 내부 요약 동시성 (기본 2) |
+| `SUMMARIZE_TIMEOUT_S` | watch-ai 요약 1건당 처리 시간 상한(초, 기본 100). watch-runner `_summarize()`의 클라이언트 타임아웃(120s)보다 반드시 작아야 한다 |
 
 검색 키워드(사람인/원티드)는 env가 아니라 `crawlers.params`의 `keyword` 값으로 POST body에 실려 온다 — DB만 바꾸면 배포 없이 검색어를 바꿀 수 있게 하기 위한 설계다.
 
