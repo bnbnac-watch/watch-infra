@@ -49,7 +49,7 @@ HC4 (DB 서버, 원격)
 각 서비스 Dockerfile은 `CMD ["python", "main.py"]`로 컨테이너 안에서 python이 PID 1로 직접 실행된다. 리눅스에서 PID 1은 자신이 직접 spawn하지 않은(재부모화된) 자식 프로세스를 reap하지 않는다는 특성이 있는데, `watch-playwright`가 렌더 요청마다 새로 띄우는 Chromium(+렌더러/GPU 자식 프로세스)이 메모리 압박으로 OOM killer에 죽으면 그 자식들이 python(PID 1)으로 재부모화된 채 좀비로 영구히 쌓인다. 실제로 이게 누적되어 프로세스 테이블/유저 프로세스 한도(`ulimit -u`, `pid_max`)에 도달했고, N2+ 서버가 `fork: retry: Resource temporarily unavailable` 에러로 완전히 응답 불능이 되어 재부팅한 사고가 있었다(2026-08-19). `init: true`는 Docker Compose가 내장 tini를 컨테이너 PID 1로 붙여서, 재부모화된 고아 프로세스를 tini가 대신 `wait()`하게 만드는 표준적인 해법이다.
 
 **`watch-playwright`에 `mem_limit`을 건 이유**
-`init: true`(2026-08-19 사고 대응)는 Chromium이 OOM killer에 죽은 뒤 남는 고아 프로세스를 청소할 뿐, Chromium이 애초에 죽는 것 자체는 막지 못한다. ARM64 보드(N2+)는 메모리가 넉넉하지 않아 무거운 페이지를 렌더링할 때 Chromium이 다시 OOM 대상이 될 수 있다. 호스트 전역 OOM killer는 어떤 프로세스가 죽을지 예측하기 어렵고, 최악의 경우 DB 커넥션을 쥔 다른 서비스가 대신 죽을 수도 있다. `mem_limit`으로 컨테이너별 cgroup 메모리 상한을 걸어두면, 예산을 넘겼을 때 `watch-playwright` 자기 자신(그리고 그 안의 Chromium 관련 프로세스)만 죽는다 — `restart: unless-stopped`가 재기동하고 `init: true`가 잔여 고아 프로세스를 청소한다. 근본적으로 "Chromium이 죽지 않게" 만드는 게 아니라 "죽을 때 블라스트 반경을 이 컨테이너 안으로 봉쇄"하는 접근이다. 실제 상한값(`PLAYWRIGHT_MEM_LIMIT`)은 서버 실측(`free -h`, `docker stats`) 기준으로 조정한다.
+`init: true`(2026-08-19 사고 대응)는 Chromium이 OOM killer에 죽은 뒤 남는 고아 프로세스를 청소할 뿐, Chromium이 애초에 죽는 것 자체는 막지 못한다. ARM64 보드(N2+)는 메모리가 넉넉하지 않아 무거운 페이지를 렌더링할 때 Chromium이 다시 OOM 대상이 될 수 있다. 호스트 전역 OOM killer는 어떤 프로세스가 죽을지 예측하기 어렵고, 최악의 경우 DB 커넥션을 쥔 다른 서비스가 대신 죽을 수도 있다. `mem_limit`으로 컨테이너별 cgroup 메모리 상한을 걸어두면, 예산을 넘겼을 때 컨테이너 자체가 아니라 그 안의 Chromium 프로세스만 죽는다 — `watch-playwright`는 렌더 요청마다 Chromium을 새로 띄우고 요청이 끝나면 닫으므로(상시 프로세스가 아님), 진행 중이던 그 `/render` 요청 하나만 실패하고 `init: true`(tini)가 죽은 Chromium의 잔여 고아 프로세스를 청소한다. 컨테이너는 재시작되지 않고, 다음 렌더 요청이 새 Chromium을 다시 띄운다. 근본적으로 "Chromium이 죽지 않게" 만드는 게 아니라 "죽을 때 블라스트 반경을 이 컨테이너 안으로 봉쇄"하는 접근이다. 실제 상한값(`PLAYWRIGHT_MEM_LIMIT`)은 서버 실측(`free -h`, `docker stats`) 기준으로 조정한다.
 
 **`watch-admin`을 별도 서비스로 분리한 이유**
 크롤러 enabled 토글과 설정 편집을 DB 직접 UPDATE로 처리하다가, 실패 알림이 연속으로 쏟아지는 상황에서 대응이 늦어진 사고가 있었다(2026-08). `watch-runner`가 이미 `:8001`에 HTTP API와 DB 커넥션을 갖고 있었지만, 스케줄링·오케스트레이션이라는 책임에 admin UI를 얹으면 그 책임이 섞인다 — "서비스마다 별도 repo/컨테이너" 컨벤션을 그대로 따라 `watch-admin`을 분리했다. `watch-admin`은 `crawlers` 테이블을 직접 읽고 쓰되, 실제로 스케줄에 반영하는 건 여전히 `watch-runner`의 `POST /reload`에 위임한다 — "중복 감지를 runner가 담당하는 이유"와 같은 맥락으로, 스케줄러 상태를 두 서비스가 따로 들고 있지 않게 하기 위해서다.
@@ -83,6 +83,7 @@ HC4 (DB 서버, 원격)
 | `YOUTUBE_API_KEY` | crawler-yt-channels가 사용 |
 | `GEMINI_API_KEY` | watch-ai가 사용 |
 | `MAX_CONCURRENCY` | watch-playwright의 동시 Chromium 인스턴스 수 (기본 1) |
+| `PLAYWRIGHT_MEM_LIMIT` | watch-playwright 컨테이너 메모리 상한 (기본 768m) — 실서버 실측 후 조정 |
 | `SUMMARIZE_CONCURRENCY` | watch-runner가 watch-ai를 호출하는 동시성 제한 (기본 4) |
 | `MAX_FAIL_COUNT` | watch-runner가 크롤러를 자동 비활성화하는 연속 실패 횟수 (기본 5). watch-admin도 크롤러 목록 UI에서 실패 중인 크롤러(fail_count ≥ 이 값)를 강조 표시하는 데 사용 |
 | `RPD_LIMIT` | watch-ai의 일일 요약 요청 한도 (기본 1500) |
