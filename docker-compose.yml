@@ -82,3 +82,25 @@ services:
     init: true
     depends_on:
       - watch-playwright
+
+  # 그리드 이미지를 잠깐 퍼블릭 노출하는 정적 파일 서버. 항상 켜져 있고,
+  # watch-gallery가 이 볼륨에 파일을 쓰고 지우는 것으로 노출을 제어한다.
+  # TODO: 실제 NFS 마운트 경로로 바꿔야 함 (/mnt/nfs/watch-gallery는 예시)
+  watch-gallery-nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - /mnt/nfs/watch-gallery:/usr/share/nginx/html:ro
+
+  watch-gallery:
+    image: watch-gallery
+    restart: unless-stopped
+    init: true
+    environment:
+      - PUBLIC_DOMAIN=${WATCH_GALLERY_DOMAIN:-bnbnac2.duckdns.org}
+      - EXPOSE_SECONDS=${WATCH_GALLERY_EXPOSE_SECONDS:-60}
+      - SERVE_DIR=/serve
+    volumes:
+      - /mnt/nfs/watch-gallery:/serve
