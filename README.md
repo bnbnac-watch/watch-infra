@@ -56,6 +56,9 @@ HC4 (DB 서버, 원격)
 
 **동시성 제어**: `watch-runner/executor.py`가 크롤러 호출을 `Semaphore(1)`로 제한해 크롤러 컨테이너 호출이 한 번에 하나씩만 나가도록 강제한다. cron 스케줄은 크롤러마다 제각각이다 — 채널 성격에 맞는 폴링 주기를 각자 갖도록 설계된 것이지, 충돌을 피하려고 시각을 흩뿌린 것이 아니다. 실제 운영 DB 기준으로도 BobPlus·Wolf처럼 즉시성이 중요한 채널은 `*/5 * * * *`(5분마다)를, 나머지 대부분(WorkHub, Saramin/Wanted의 SLAM·VIO 배치 그룹, 유튜브 구독 채널들)은 `0 7,17 * * *`(하루 2회, 07:00/17:00 KST)를 공유해서 쓴다 — 즉 같은 스케줄을 쓰는 크롤러 10개가 정확히 같은 순간에 같이 트리거된다. 이 동시 트리거를 실제로 순차화해서 흡수하는 게 위 세마포어다.
 
+**`watch-ai`가 자체 `AI_CONCURRENCY`를 갖는 이유**
+`watch-runner`는 `SUMMARIZE_CONCURRENCY`(기본 4)로 `/summarize` 요청을 최대 4개까지 동시에 보내도록 설계돼 있지만, 예전 `watch-ai`는 자체적으로 `Semaphore(1)`을 걸어 항상 1개로 직렬화하고 있었다 — runner의 동시성 설정이 사실상 무의미했다. 게다가 그 세마포어를 Gemini 재시도 루프 전체(최악 ~15분) 동안 쥐고 있어서, runner의 클라이언트 타임아웃(120초)이 먼저 끊기고 watch-ai는 이미 버려진 요청을 계속 붙잡은 채 세마포어 슬롯을 낭비하는 구조였다. `AI_CONCURRENCY`로 내부 동시성을 명시적으로 노출하고, `SUMMARIZE_TIMEOUT_S`(반드시 runner의 120초보다 작게)로 요청당 처리 시간에 상한을 걸어 이 불일치를 없앴다.
+
 ## Docker Compose 서비스
 
 | 서비스 | 역할 | 포트 | depends_on |
@@ -88,6 +91,8 @@ HC4 (DB 서버, 원격)
 | `MAX_FAIL_COUNT` | watch-runner가 크롤러를 자동 비활성화하는 연속 실패 횟수 (기본 5). watch-admin도 크롤러 목록 UI에서 실패 중인 크롤러(fail_count ≥ 이 값)를 강조 표시하는 데 사용 |
 | `RPD_LIMIT` | watch-ai의 일일 요약 요청 한도 (기본 1500) |
 | `SUMMARIZER` | watch-ai가 사용할 요약 구현체 (기본 `transcript`) |
+| `AI_CONCURRENCY` | watch-ai 내부 요약 동시성 (기본 2) |
+| `SUMMARIZE_TIMEOUT_S` | watch-ai 요약 1건당 처리 시간 상한(초, 기본 110). watch-runner `_summarize()`의 클라이언트 타임아웃(120s)보다 반드시 작아야 한다 |
 
 검색 키워드(사람인/원티드)는 env가 아니라 `crawlers.params`의 `keyword` 값으로 POST body에 실려 온다 — DB만 바꾸면 배포 없이 검색어를 바꿀 수 있게 하기 위한 설계다.
 

@@ -70,6 +70,8 @@ services:
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash}
       - RPD_LIMIT=${RPD_LIMIT:-1500}
       - SUMMARIZER=${SUMMARIZER:-transcript}
+      - AI_CONCURRENCY=${AI_CONCURRENCY:-2}
+      - SUMMARIZE_TIMEOUT_S=${SUMMARIZE_TIMEOUT_S:-110}
 
   crawler-yt-channels:
     image: crawler-yt-channels
