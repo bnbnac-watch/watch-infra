@@ -4,6 +4,8 @@ services:
     restart: unless-stopped
     init: true
     ipc: host
+    mem_limit: ${PLAYWRIGHT_MEM_LIMIT:-1280m}
+    memswap_limit: ${PLAYWRIGHT_MEM_LIMIT:-1280m}
     environment:
       - MAX_CONCURRENCY=${MAX_CONCURRENCY:-1}
 
