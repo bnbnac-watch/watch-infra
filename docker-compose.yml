@@ -104,7 +104,7 @@ services:
     user: "10002:10002"
     environment:
       - PUBLIC_DOMAIN=${WATCH_GALLERY_DOMAIN:-bnbnac2.duckdns.org}
-      - EXPOSE_SECONDS=${WATCH_GALLERY_EXPOSE_SECONDS:-60}
+      - EXPOSE_SECONDS=${WATCH_GALLERY_EXPOSE_SECONDS:-600}
       - SERVE_DIR=/serve
     volumes:
       - /mnt/nfs/temp/watch-gallery:/serve
