@@ -59,6 +59,15 @@ HC4 (DB 서버, 원격)
 **`watch-ai`가 자체 `AI_CONCURRENCY`를 갖는 이유**
 `watch-runner`는 `SUMMARIZE_CONCURRENCY`(기본 4)로 `/summarize` 요청을 최대 4개까지 동시에 보내도록 설계돼 있지만, 예전 `watch-ai`는 자체적으로 `Semaphore(1)`을 걸어 항상 1개로 직렬화하고 있었다 — runner의 동시성 설정이 사실상 무의미했다. 게다가 그 세마포어를 Gemini 재시도 루프 전체(최악 ~15분) 동안 쥐고 있어서, runner의 클라이언트 타임아웃(120초)이 먼저 끊기고 watch-ai는 이미 버려진 요청을 계속 붙잡은 채 세마포어 슬롯을 낭비하는 구조였다. `AI_CONCURRENCY`로 내부 동시성을 명시적으로 노출하고, `SUMMARIZE_TIMEOUT_S`(반드시 runner의 120초보다 작게)로 요청당 처리 시간에 상한을 걸어 이 불일치를 없앴다.
 
+**`watch-gallery`를 별도 정적 파일 서버(`watch-gallery-nginx`)와 짝지은 이유**
+크롤러가 추출한 이미지를 그리드로 합쳐 잠깐 퍼블릭 인터넷에 노출하고 Slack에 공유하기 위한 서비스다. 이미지를 서빙하는 역할과 그리드를 만들고 보관을 관리하는 역할을 한 컨테이너에 합치지 않고, `watch-gallery-nginx`(상시 켜진 정적 파일 서버)와 `watch-gallery`(그리드 생성 API)로 나눴다 — `watch-gallery`가 재시작되거나 잠깐 죽어도 이미 만들어둔 이미지의 서빙 자체는 끊기지 않는다. `PUBLIC_DOMAIN`(OCI 게이트웨이 + duckdns) 경로는 이 nginx로 한 번만 연결해두면 되고, `watch-gallery` 쪽 코드는 서버 기동/중지를 신경 쓸 필요가 없다.
+
+**`watch-gallery-nginx`에 `init: true`가 없는 이유**
+다른 서비스들과 달리 이건 커스텀 `CMD ["python", "main.py"]`가 아니라 공식 `nginx:alpine` 이미지를 그대로 쓴다. nginx 마스터 프로세스는 PID 1로 동작하도록 설계돼 있어 자체적으로 시그널 처리(graceful shutdown)와 워커 프로세스 reap을 하므로, 다른 서비스들이 `init: true`(tini)를 필요로 하는 이유(재부모화된 좀비 자식 프로세스 방치)가 애초에 적용되지 않는다.
+
+**보관 만료를 요청 단위 예약이 아니라 주기적 스윕으로 처리하는 이유**
+`/build` 호출마다 "N초 후 삭제"를 `asyncio.sleep`으로 예약해두는 방식은 짧은 노출 시간(초 단위)에는 괜찮지만, `WATCH_GALLERY_RETENTION_SECONDS` 기본값이 3일이라 그 사이 컨테이너가 한 번이라도 재시작되면 예약이 통째로 사라져 파일이 영영 안 지워질 수 있다. 대신 `watch-gallery`는 1시간마다 `SERVE_DIR`을 훑어 mtime 기준으로 만료된 파일을 지우는 스윕 루프를 백그라운드로 돌린다 — 재시작돼도 다음 스윕에서 다시 잡힌다.
+
 ## Docker Compose 서비스
 
 | 서비스 | 역할 | 포트 | depends_on |
@@ -73,6 +82,8 @@ HC4 (DB 서버, 원격)
 | `crawler-wanted` | 원티드 크롤러 | - | watch-playwright |
 | `crawler-yt-channels` | YouTube 크롤러 | - | - |
 | `crawler-kakao-channels` | 카카오 채널 크롤러 | - | watch-playwright |
+| `watch-gallery-nginx` | 그리드 이미지 상시 정적 파일 서버 | `8000:80` | - |
+| `watch-gallery` | 크롤러 이미지를 그리드로 병합, 보관 관리 | - | - |
 
 `image:` 값은 레지스트리 접두어 없는 로컬 태그(예: `watch-runner`)다. 각 repo의 `deploy.yml`이 self-hosted runner에서 `docker build -t <image> .`로 직접 빌드하고 바로 `docker compose -f $HOME/watch-infra/docker-compose.yml up -d --no-deps <service>`로 재기동한다 — 외부 이미지 레지스트리(ghcr.io 등)는 실제로는 쓰지 않는다.
 
@@ -93,6 +104,8 @@ HC4 (DB 서버, 원격)
 | `SUMMARIZER` | watch-ai가 사용할 요약 구현체 (기본 `transcript`) |
 | `AI_CONCURRENCY` | watch-ai 내부 요약 동시성 (기본 2) |
 | `SUMMARIZE_TIMEOUT_S` | watch-ai 요약 1건당 처리 시간 상한(초, 기본 110). watch-runner `_summarize()`의 클라이언트 타임아웃(120s)보다 반드시 작아야 한다 |
+| `WATCH_GALLERY_DOMAIN` | watch-gallery가 응답하는 `public_url`의 도메인 (기본 `bnbnac2.duckdns.org`) |
+| `WATCH_GALLERY_RETENTION_SECONDS` | watch-gallery가 그리드 이미지를 보관하는 기간(초, 기본 259200=3일). 지난 파일은 1시간 주기 스윕에서 삭제 |
 
 검색 키워드(사람인/원티드)는 env가 아니라 `crawlers.params`의 `keyword` 값으로 POST body에 실려 온다 — DB만 바꾸면 배포 없이 검색어를 바꿀 수 있게 하기 위한 설계다.
 

@@ -86,3 +86,29 @@ services:
     init: true
     depends_on:
       - watch-playwright
+
+  # 그리드 이미지를 잠깐 퍼블릭 노출하는 정적 파일 서버. 항상 켜져 있고,
+  # watch-gallery가 이 볼륨에 파일을 쓰고 지우는 것으로 노출을 제어한다.
+  # /mnt/nfs/temp는 범용 임시 스토리지용 NFS export (UID/GID 10002 전용) -
+  # 그 아래 watch-gallery 전용 서브디렉토리를 쓴다.
+  # nginx는 :ro 마운트 + 내부적으로 마스터=root/워커=nginx로 권한을 낮추므로
+  # user를 따로 지정하지 않는다 (docker inspect + 실행으로 확인함).
+  watch-gallery-nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - /mnt/nfs/temp/watch-gallery:/usr/share/nginx/html:ro
+
+  watch-gallery:
+    image: watch-gallery
+    restart: unless-stopped
+    init: true
+    user: "10002:10002"
+    environment:
+      - PUBLIC_DOMAIN=${WATCH_GALLERY_DOMAIN:-bnbnac2.duckdns.org}
+      - RETENTION_SECONDS=${WATCH_GALLERY_RETENTION_SECONDS:-259200}
+      - SERVE_DIR=/serve
+    volumes:
+      - /mnt/nfs/temp/watch-gallery:/serve
