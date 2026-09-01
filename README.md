@@ -54,10 +54,10 @@ HC4 (DB 서버, 원격)
 **`watch-admin`을 별도 서비스로 분리한 이유**
 크롤러 enabled 토글과 설정 편집을 DB 직접 UPDATE로 처리하다가, 실패 알림이 연속으로 쏟아지는 상황에서 대응이 늦어진 사고가 있었다(2026-08). `watch-runner`가 이미 `:8001`에 HTTP API와 DB 커넥션을 갖고 있었지만, 스케줄링·오케스트레이션이라는 책임에 admin UI를 얹으면 그 책임이 섞인다 — "서비스마다 별도 repo/컨테이너" 컨벤션을 그대로 따라 `watch-admin`을 분리했다. `watch-admin`은 `crawlers` 테이블을 직접 읽고 쓰되, 실제로 스케줄에 반영하는 건 여전히 `watch-runner`의 `POST /reload`에 위임한다 — "중복 감지를 runner가 담당하는 이유"와 같은 맥락으로, 스케줄러 상태를 두 서비스가 따로 들고 있지 않게 하기 위해서다.
 
-**동시성 제어**: `watch-runner/executor.py`가 크롤러 호출을 `Semaphore(1)`로 제한해 크롤러 컨테이너 호출이 한 번에 하나씩만 나가도록 강제한다. cron 스케줄은 크롤러마다 제각각이다 — 채널 성격에 맞는 폴링 주기를 각자 갖도록 설계된 것이지, 충돌을 피하려고 시각을 흩뿌린 것이 아니다. 실제 운영 DB 기준으로도 BobPlus·Wolf처럼 즉시성이 중요한 채널은 `*/5 * * * *`(5분마다)를, 나머지 대부분(WorkHub, Saramin/Wanted의 SLAM·VIO 배치 그룹, 유튜브 구독 채널들)은 `0 7,17 * * *`(하루 2회, 07:00/17:00 KST)를 공유해서 쓴다 — 즉 같은 스케줄을 쓰는 크롤러 10개가 정확히 같은 순간에 같이 트리거된다. 이 동시 트리거를 실제로 순차화해서 흡수하는 게 위 세마포어다.
+**동시성 제어**: 크롤러 호출은 이제 동시에 나간다. 다만 `watch-playwright`에 의존하는 크롤러들(crawler-workhub, crawler-wanted, crawler-kakao-channels)은 watch-playwright 내부의 `Semaphore(MAX_CONCURRENCY)` 뒤에서 대기한다 — 한 번에 하나씩만 브라우저를 써서 고비용의 렌더링을 보호한다. 비브라우저 크롤러들(crawler-saramin, crawler-yt-channels)은 이 대기 없이 동시에 실행 가능하다. cron 스케줄은 크롤러마다 제각각이다 — 채널 성격에 맞는 폴링 주기를 각자 갖도록 설계된 것이지, 충돌을 피하려고 시각을 흩뿌린 것이 아니다. 실제 운영 DB 기준으로도 BobPlus·Wolf처럼 즉시성이 중요한 채널은 `*/5 * * * *`(5분마다)를, 나머지 대부분(WorkHub, Saramin/Wanted의 SLAM·VIO 배치 그룹, 유튜브 구독 채널들)은 `0 7,17 * * *`(하루 2회, 07:00/17:00 KST)를 공유해서 쓴다 — 즉 같은 스케줄을 쓰는 크롤러들이 정확히 같은 순간에 트리거돼도, watch-playwright 의존 크롤러는 차례대로 처리되고 비의존 크롤러는 병렬로 실행된다.
 
 **`watch-ai`가 자체 `AI_CONCURRENCY`를 갖는 이유**
-`watch-runner`는 `SUMMARIZE_CONCURRENCY`(기본 4)로 `/summarize` 요청을 최대 4개까지 동시에 보내도록 설계돼 있지만, 예전 `watch-ai`는 자체적으로 `Semaphore(1)`을 걸어 항상 1개로 직렬화하고 있었다 — runner의 동시성 설정이 사실상 무의미했다. 게다가 그 세마포어를 Gemini 재시도 루프 전체(최악 ~15분) 동안 쥐고 있어서, runner의 클라이언트 타임아웃(120초)이 먼저 끊기고 watch-ai는 이미 버려진 요청을 계속 붙잡은 채 세마포어 슬롯을 낭비하는 구조였다. `AI_CONCURRENCY`로 내부 동시성을 명시적으로 노출하고, `SUMMARIZE_TIMEOUT_S`(반드시 runner의 120초보다 작게)로 요청당 처리 시간에 상한을 걸어 이 불일치를 없앴다.
+watch-runner는 이제 job submission 기반 async 처리로 전환되어 요약 동시성 제한이 클라이언트 쪽에서 필요 없어졌다. `watch-ai` 내부에서는 `AI_CONCURRENCY`로 Gemini API 호출의 동시성을 제어한다 — rate limit 여유를 보고 조정할 수 있도록 명시적으로 노출했다. `SUMMARIZE_TIMEOUT_S`로 요청당 처리 시간에 상한을 걸어 watch-runner의 job wait 타임아웃보다 먼저 포기하게 설계했다.
 
 **`watch-gallery`를 별도 정적 파일 서버(`watch-gallery-nginx`)와 짝지은 이유**
 크롤러가 추출한 이미지를 그리드로 합쳐 잠깐 퍼블릭 인터넷에 노출하고 Slack에 공유하기 위한 서비스다. 이미지를 서빙하는 역할과 그리드를 만들고 보관을 관리하는 역할을 한 컨테이너에 합치지 않고, `watch-gallery-nginx`(상시 켜진 정적 파일 서버)와 `watch-gallery`(그리드 생성 API)로 나눴다 — `watch-gallery`가 재시작되거나 잠깐 죽어도 이미 만들어둔 이미지의 서빙 자체는 끊기지 않는다. `PUBLIC_DOMAIN`(OCI 게이트웨이 + duckdns) 경로는 이 nginx로 한 번만 연결해두면 되고, `watch-gallery` 쪽 코드는 서버 기동/중지를 신경 쓸 필요가 없다.
@@ -98,7 +98,6 @@ HC4 (DB 서버, 원격)
 | `GEMINI_API_KEY` | watch-ai가 사용 |
 | `MAX_CONCURRENCY` | watch-playwright의 동시 Chromium 인스턴스 수 (기본 1) |
 | `PLAYWRIGHT_MEM_LIMIT` | watch-playwright 컨테이너 메모리 상한 (기본 1280m, N2+ 실측 기준) — 다른 서버로 옮기면 재실측 후 조정 |
-| `SUMMARIZE_CONCURRENCY` | watch-runner가 watch-ai를 호출하는 동시성 제한 (기본 4) |
 | `MAX_FAIL_COUNT` | watch-runner가 크롤러를 자동 비활성화하는 연속 실패 횟수 (기본 5). watch-admin도 크롤러 목록 UI에서 실패 중인 크롤러(fail_count ≥ 이 값)를 강조 표시하는 데 사용 |
 | `RPD_LIMIT` | watch-ai의 일일 요약 요청 한도 (기본 1500) |
 | `SUMMARIZER` | watch-ai가 사용할 요약 구현체 (기본 `transcript`) |
@@ -118,11 +117,13 @@ crawlers            -- 실행 단위. schedule, container, params, filter, post_
 seen_items          -- 중복 감지. PK(crawler_id, item_id), ON DELETE CASCADE 없음
 destinations        -- 발송 대상. type(discord|slack|telegram), config JSONB
 crawler_destinations -- crawler ↔ destination 매핑
+pending_summaries   -- cross-crawl-cycle 재시도 카운터. 요약 실패 시 다음 사이클에서 재시도할 항목 추적
+async_jobs          -- generic async job tracking 테이블. 요약 job/callback 흐름에서 사용
 ```
 
 **테이블 존재 여부는 `schema.sql`과 실제 DB(HC4)가 일치**(`crawlers`, `seen_items`, `destinations`, `crawler_destinations` 4개, 2026-07-11 `\dt` 기준 확인). `pending_notifications`(DND용)는 어느 서비스 코드에서도 참조되지 않는다 — `todo.md`에 계획으로만 존재하며 미구현이다.
 
-**버그**: `watch-ai/db.py`는 `ai_usage` 테이블(RPD 카운터)을 조회하는데, 이 테이블은 `schema.sql`에도 없고 **실제 DB에도 존재하지 않는다**(`relation "ai_usage" does not exist` 직접 확인). `/summarize` 호출마다 이 테이블에 INSERT를 시도하므로 지금 상태로는 요약 요청이 매번 실패할 가능성이 높다 — 문서 누락이 아니라 실제 동작하지 않는 버그다.
+**`ai_usage` 테이블**: `watch-ai/db.py`의 `_process_job()` 메서드가 이 테이블을 호출하는데(RPD 카운터), 마이그레이션 `20260711000002_add_ai_usage.sql`이 존재하고 2026-07-11에 수동으로 프로덕션에 적용된 기록이 있다. watch-ai의 새로운 job 처리 코드가 매번 `increment_usage()`를 호출하므로 실제 프로덕션 DB에 존재해야 정상 동작한다. (이상적으로는 `\dt ai_usage`로 실제 HC4 인스턴스에 존재 여부를 재확인 권장)
 
 ## 배포
 
