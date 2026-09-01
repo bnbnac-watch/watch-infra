@@ -102,7 +102,7 @@ watch-runner는 이제 job submission 기반 async 처리로 전환되어 요약
 | `RPD_LIMIT` | watch-ai의 일일 요약 요청 한도 (기본 1500) |
 | `SUMMARIZER` | watch-ai가 사용할 요약 구현체 (기본 `transcript`) |
 | `AI_CONCURRENCY` | watch-ai 내부 요약 동시성 (기본 2) |
-| `SUMMARIZE_TIMEOUT_S` | watch-ai 요약 1건당 처리 시간 상한(초, 기본 110). watch-runner `_summarize()`의 클라이언트 타임아웃(120s)보다 반드시 작아야 한다 |
+| `SUMMARIZE_TIMEOUT_S` | watch-ai 요약 1건당 처리 시간 상한(초, 기본 110). watch-runner의 job 대기 상한(300s, `jobs.wait_for_job`)보다 반드시 작아야 한다 |
 | `WATCH_GALLERY_DOMAIN` | watch-gallery가 응답하는 `public_url`의 도메인 (기본 `bnbnac2.duckdns.org`) |
 | `WATCH_GALLERY_RETENTION_SECONDS` | watch-gallery가 그리드 이미지를 보관하는 기간(초, 기본 259200=3일). 지난 파일은 1시간 주기 스윕에서 삭제 |
 
