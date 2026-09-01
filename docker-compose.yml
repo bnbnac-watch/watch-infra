@@ -36,7 +36,6 @@ services:
       - watch-sender
     environment:
       - DATABASE_URL=${DATABASE_URL}
-      - SUMMARIZE_CONCURRENCY=${SUMMARIZE_CONCURRENCY:-4}
       - MAX_FAIL_COUNT=${MAX_FAIL_COUNT:-5}
     ports:
       - "8001:8080"
