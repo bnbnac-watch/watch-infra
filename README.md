@@ -99,10 +99,11 @@ watch-runner는 이제 job submission 기반 async 처리로 전환되어 요약
 | `MAX_CONCURRENCY` | watch-playwright의 동시 Chromium 인스턴스 수 (기본 1) |
 | `PLAYWRIGHT_MEM_LIMIT` | watch-playwright 컨테이너 메모리 상한 (기본 1280m, N2+ 실측 기준) — 다른 서버로 옮기면 재실측 후 조정 |
 | `MAX_FAIL_COUNT` | watch-runner가 크롤러를 자동 비활성화하는 연속 실패 횟수 (기본 5). watch-admin도 크롤러 목록 UI에서 실패 중인 크롤러(fail_count ≥ 이 값)를 강조 표시하는 데 사용 |
+| `MAX_SUMMARY_ATTEMPTS` | 요약이 연속 실패했을 때 포기하고 링크만 발송하기까지의 횟수 (기본 3). 재시도는 크롤 사이클 단위라 실제 최대 지연은 이 값 × 크롤 주기다. watch-runner가 판정하고, watch-admin은 "요약 보류 중" 표에서 남은 재시도를 보여주는 데 같은 값을 쓴다 — 두 서비스에 같은 값을 줘야 한다 |
 | `RPD_LIMIT` | watch-ai의 일일 요약 요청 한도 (기본 1500) |
 | `SUMMARIZER` | watch-ai가 사용할 요약 구현체 (기본 `transcript`) |
 | `AI_CONCURRENCY` | watch-ai 내부 요약 동시성 (기본 2) |
-| `SUMMARIZE_TIMEOUT_S` | watch-ai 요약 1건당 처리 시간 상한(초, 기본 110). watch-runner의 job 대기 상한(300s, `jobs.wait_for_job`)보다 반드시 작아야 한다 |
+| `SUMMARIZE_TIMEOUT_S` | watch-ai 요약 1건당 처리 시간 상한(초, 기본 240). Gemini 503 재시도 백오프 최악 75초(`providers/gemini.py`)를 흡수할 수 있어야 하고, 동시에 watch-runner의 job 대기 상한(300s, `jobs.wait_for_job`)보다 반드시 작아야 한다 |
 | `WATCH_GALLERY_DOMAIN` | watch-gallery가 응답하는 `public_url`의 도메인 (기본 `bnbnac2.duckdns.org`) |
 | `WATCH_GALLERY_RETENTION_SECONDS` | watch-gallery가 그리드 이미지를 보관하는 기간(초, 기본 259200=3일). 지난 파일은 1시간 주기 스윕에서 삭제 |
 

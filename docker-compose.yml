@@ -17,6 +17,7 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - WATCH_RUNNER_URL=http://watch-runner:8080
       - MAX_FAIL_COUNT=${MAX_FAIL_COUNT:-5}
+      - MAX_SUMMARY_ATTEMPTS=${MAX_SUMMARY_ATTEMPTS:-3}
     ports:
       - "8002:8080"
 
@@ -37,6 +38,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - MAX_FAIL_COUNT=${MAX_FAIL_COUNT:-5}
+      - MAX_SUMMARY_ATTEMPTS=${MAX_SUMMARY_ATTEMPTS:-3}
     ports:
       - "8001:8080"
 
@@ -70,7 +72,7 @@ services:
       - RPD_LIMIT=${RPD_LIMIT:-1500}
       - SUMMARIZER=${SUMMARIZER:-transcript}
       - AI_CONCURRENCY=${AI_CONCURRENCY:-2}
-      - SUMMARIZE_TIMEOUT_S=${SUMMARIZE_TIMEOUT_S:-110}
+      - SUMMARIZE_TIMEOUT_S=${SUMMARIZE_TIMEOUT_S:-240}
 
   crawler-yt-channels:
     image: crawler-yt-channels
