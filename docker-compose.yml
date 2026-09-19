@@ -27,6 +27,7 @@ services:
     init: true
     environment:
       - DATABASE_URL=${DATABASE_URL}
+      - ALERT_DESTINATION_ID=${ALERT_DESTINATION_ID:-}
 
   watch-runner:
     image: watch-runner
@@ -38,6 +39,7 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - MAX_FAIL_COUNT=${MAX_FAIL_COUNT:-5}
+      - ALERT_FAIL_THRESHOLD=${ALERT_FAIL_THRESHOLD:-3}
       - MAX_SUMMARY_ATTEMPTS=${MAX_SUMMARY_ATTEMPTS:-3}
     ports:
       - "8001:8080"
