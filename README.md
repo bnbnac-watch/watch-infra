@@ -99,6 +99,8 @@ watch-runner는 이제 job submission 기반 async 처리로 전환되어 요약
 | `MAX_CONCURRENCY` | watch-playwright의 동시 Chromium 인스턴스 수 (기본 1) |
 | `PLAYWRIGHT_MEM_LIMIT` | watch-playwright 컨테이너 메모리 상한 (기본 1280m, N2+ 실측 기준) — 다른 서버로 옮기면 재실측 후 조정 |
 | `MAX_FAIL_COUNT` | watch-runner가 크롤러를 자동 비활성화하는 연속 실패 횟수 (기본 5). watch-admin도 크롤러 목록 UI에서 실패 중인 크롤러(fail_count ≥ 이 값)를 강조 표시하는 데 사용 |
+| `ALERT_FAIL_THRESHOLD` | watch-runner가 크롤러 오류 알림을 보내는 연속 실패 횟수 (기본 3, 해당 횟수째에 한 번만). 자동 비활성화(`MAX_FAIL_COUNT`) 시점은 별도로 항상 알림 |
+| `ALERT_DESTINATION_ID` | watch-sender가 크롤러 오류·복구·자동 비활성화 알림을 보내는 운영자 전용 destination의 `destinations.id`. 미설정이면 발송하지 않고 로그만 남긴다 (크롤러 destination으로 폴백하지 않음) |
 | `MAX_SUMMARY_ATTEMPTS` | 요약이 연속 실패했을 때 포기하고 링크만 발송하기까지의 횟수 (기본 3). 재시도는 크롤 사이클 단위라 실제 최대 지연은 이 값 × 크롤 주기다. watch-runner가 판정하고, watch-admin은 "요약 보류 중" 표에서 남은 재시도를 보여주는 데 같은 값을 쓴다 — 두 서비스에 같은 값을 줘야 한다 |
 | `RPD_LIMIT` | watch-ai의 일일 요약 요청 한도 (기본 1500) |
 | `SUMMARIZER` | watch-ai가 사용할 요약 구현체 (기본 `transcript`) |
