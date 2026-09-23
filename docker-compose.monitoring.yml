@@ -1,0 +1,51 @@
+# HC4의 Prometheus가 스크레이프할 exporter들. N2+ 리소스 여유가 빡빡해서
+# (README 참고: RAM 3.5GB/swap 0, 2026-08-19 OOM 사고 이력) 무거운 저장/조회 계층
+# (Prometheus, Grafana)은 HC4에 두고, 여기엔 가벼운 exporter만 둔다.
+#
+# 배포: docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d --no-deps node-exporter cadvisor
+#
+# 포트는 LAN_IP(N2+ 자신의 LAN IP, 192.168.1.10)에만 바인드한다 — 두 exporter 모두 인증이
+# 없어서, 기존 watch-runner(:8001)/watch-admin(:8002)과 같은 전제(LAN 안에서만 닿음)를 유지하기 위함.
+# N2+/HC4는 같은 집 LAN이라 Tailscale/WireGuard 같은 오버레이 네트워크는 필요 없다.
+services:
+  node-exporter:
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+    init: true
+    mem_limit: 64m
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      # 기본 collector를 전부 끄고 지금 목적(리소스 추이 관찰 + OOM 감지)에 필요한 것만 켠다.
+      # node_vmstat_oom_kill(커널 OOM killer 발생 누적 카운터)이 vmstat collector에서 나온다.
+      - '--collector.disable-defaults'
+      - '--collector.cpu'
+      - '--collector.meminfo'
+      - '--collector.loadavg'
+      - '--collector.vmstat'
+      - '--collector.filesystem'
+    ports:
+      - "${LAN_IP}:9100:9100"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    restart: unless-stopped
+    mem_limit: 128m
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - '--docker_only=true'
+      - '--housekeeping_interval=30s'
+    ports:
+      - "${LAN_IP}:9101:8080"
