@@ -321,3 +321,7 @@ git commit -m "docs: docker-autoheal 메커니즘 문서화"
 ## 실행 후 정정 사항 (2026-09-28, 최종 리뷰에서 발견)
 
 Global Constraints의 "systemd 유닛의 `ExecStart` 경로는... `User=`+`%h` specifier로 홈 디렉토리를 참조한다" 항목은 **틀렸다**. `%h`는 시스템 유닛(`--user` 유닛이 아닌)에서는 `User=`와 무관하게 `/root`로 풀린다 — 이 계획대로 구현했다면 `docker-autoheal.service`는 매번 `203/EXEC`로 조용히 실패했을 것이다. 실제로 동작하려면 `WorkingDirectory=~`(이건 `User=`를 따라간다)를 쓰고 `ExecStart`는 그 기준 상대경로로 써야 한다. 이 패턴을 다른 systemd 유닛 작업에 재사용하지 말 것.
+
+## 실행 후 정정 사항 2 (PR 리뷰 중 사용자 결정으로 번복)
+
+Task 4("apply.sh에 systemd 유닛 설치 스텝 추가")는 PR 코드 리뷰 대화 중 되돌렸다. systemd 유닛 파일은 한 번 맞게 설치되면 거의 바뀔 일이 없는데, 그걸 위해 무인 CI 배포 스크립트(`apply.sh`)에 `sudo`를 매번 실행하게 만드는 건 실익 대비 위험(사람 검토 없이 매 배포마다 root 권한 명령이 도는 표면적 확대)이 크다고 판단. 대신 `README.md`의 Autoheal 섹션에 "최초 설치 (1회, 수동)" 절차로 옮겼다 — 호스트를 새로 프로비저닝하거나 유닛 파일을 고쳤을 때만 사람이 직접 실행한다.

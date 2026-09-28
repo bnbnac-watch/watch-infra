@@ -134,8 +134,6 @@ async_jobs          -- generic async job tracking 테이블. 요약 job/callback
 ./apply.sh   # cd watch-infra && docker compose up -d
 ```
 
-`apply.sh`는 이제 docker-autoheal systemd 유닛 설치를 위해 `sudo`도 쓴다 — 수동 실행 시 비밀번호를 물어볼 수 있다.
-
 평소에는 각 서비스 repo의 CI가 알아서 부분 배포하므로 수동 실행은 초기 세팅이나 compose 파일 자체를 바꿨을 때만 필요하다.
 
 ```bash
@@ -154,7 +152,18 @@ docker compose up -d --no-deps <service>
 
 이를 잡기 위해 두 서비스에 `stat()` 기반 healthcheck를 추가했고, `systemd/docker-autoheal.timer`가
 5분마다 `scripts/autoheal.sh`를 돌려 `docker ps --filter health=unhealthy`로 잡히는 컨테이너를
-자동 재시작한다. 유닛은 `apply.sh`가 배포 때마다 (재)설치한다.
+자동 재시작한다.
+
+**최초 설치 (1회, 수동)**: 이 유닛 파일은 거의 바뀔 일이 없어서 배포 파이프라인(`apply.sh`)에
+넣지 않고 수동으로 설치한다 — CI가 매 배포마다 무인으로 `sudo`를 실행하게 만들 이유가 없다고
+판단했다. 호스트를 새로 프로비저닝했거나 유닛 파일 내용을 바꿨을 때만 다시 실행하면 된다:
+
+```bash
+sudo install -m 644 systemd/docker-autoheal.service /etc/systemd/system/docker-autoheal.service
+sudo install -m 644 systemd/docker-autoheal.timer /etc/systemd/system/docker-autoheal.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now docker-autoheal.timer
+```
 
 **HC4 재부팅 후 확인할 것**: `docker inspect --format='{{.State.Health.Status}}' watch-infra-watch-gallery-1 watch-infra-watch-gallery-nginx-1` — `unhealthy`가 5분 넘게 지속되면, 타이머가 `active (waiting)`인 것만으로는 서비스 실행 성공을 보장하지 않으므로 먼저 `sudo systemctl start docker-autoheal.service && systemctl status docker-autoheal.service --no-pager`로 서비스 자체가 `status=0/SUCCESS`로 끝나는지 확인한다. 실패했다면 `journalctl -u docker-autoheal.service -n 20`으로 원인을 본다.
 
