@@ -15,3 +15,10 @@ docker run --rm \
   amacneil/dbmate:2 up
 
 docker compose up -d
+
+# unhealthy 컨테이너 자동 재시작 (NFS stale handle 등으로 컨테이너는 안 죽었지만
+# 실제로는 고장난 상태를 감지 - 2026-09-28 인시던트 대응)
+sudo install -m 644 systemd/docker-autoheal.service /etc/systemd/system/docker-autoheal.service
+sudo install -m 644 systemd/docker-autoheal.timer /etc/systemd/system/docker-autoheal.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now docker-autoheal.timer
