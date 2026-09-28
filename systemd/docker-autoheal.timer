@@ -1,0 +1,10 @@
+[Unit]
+Description=Run docker-autoheal.service every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=docker-autoheal.service
+
+[Install]
+WantedBy=timers.target

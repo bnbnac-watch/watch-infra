@@ -141,6 +141,34 @@ async_jobs          -- generic async job tracking 테이블. 요약 job/callback
 docker compose up -d --no-deps <service>
 ```
 
+## Autoheal (unhealthy 컨테이너 자동 재시작)
+
+`watch-gallery`, `watch-gallery-nginx`는 `/mnt/nfs/temp/watch-gallery`(HC4가 export하는 NFS)에
+의존한다. HC4가 재부팅되면 NFS 서버가 내려갔다 올라오는데, **이미 떠 있던 컨테이너는 그 시점의
+파일 핸들을 그대로 캐시하고 있어서 호스트의 마운트가 복구돼도 컨테이너 안에서는 영영
+`Stale file handle`(Errno 116) 상태로 남는다** — 프로세스가 죽지 않으므로
+`restart: unless-stopped`도 발동하지 않는다 (2026-09-28 밥플러스 그리드 이미지 알림 누락 인시던트
+원인).
+
+이를 잡기 위해 두 서비스에 `stat()` 기반 healthcheck를 추가했고, `systemd/docker-autoheal.timer`가
+5분마다 `scripts/autoheal.sh`를 돌려 `docker ps --filter health=unhealthy`로 잡히는 컨테이너를
+자동 재시작한다. `com.docker.compose.project=watch-infra` 라벨로 걸러서 이 compose 프로젝트
+소속 컨테이너만 건드리고, 같은 N2+ 호스트의 다른 프로젝트(예: 별도로 이미 unhealthy인
+`honeymoon-note-app`)는 건드리지 않는다.
+
+**최초 설치 (1회, 수동)**: 이 유닛 파일은 거의 바뀔 일이 없어서 배포 파이프라인(`apply.sh`)에
+넣지 않고 수동으로 설치한다 — CI가 매 배포마다 무인으로 `sudo`를 실행하게 만들 이유가 없다고
+판단했다. 호스트를 새로 프로비저닝했거나 유닛 파일 내용을 바꿨을 때만 다시 실행하면 된다:
+
+```bash
+sudo install -m 644 systemd/docker-autoheal.service /etc/systemd/system/docker-autoheal.service
+sudo install -m 644 systemd/docker-autoheal.timer /etc/systemd/system/docker-autoheal.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now docker-autoheal.timer
+```
+
+**HC4 재부팅 후 확인할 것**: `docker inspect --format='{{.State.Health.Status}}' watch-infra-watch-gallery-1 watch-infra-watch-gallery-nginx-1` — `unhealthy`가 5분 넘게 지속되면, 타이머가 `active (waiting)`인 것만으로는 서비스 실행 성공을 보장하지 않으므로 먼저 `sudo systemctl start docker-autoheal.service && systemctl status docker-autoheal.service --no-pager`로 서비스 자체가 `status=0/SUCCESS`로 끝나는지 확인한다. 실패했다면 `journalctl -u docker-autoheal.service -n 20`으로 원인을 본다.
+
 ## 알려진 미해결 항목
 
 `todo.md` 참고 — batch_group 내 schedule 불일치 무경고 처리, DND(방해금지 시간), destination별 알림 coalescing, watch-ai Gemini fileData API 직접 호출.

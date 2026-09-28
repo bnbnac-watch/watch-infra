@@ -103,6 +103,14 @@ services:
       - "8000:80"
     volumes:
       - /mnt/nfs/temp/watch-gallery:/usr/share/nginx/html:ro
+    healthcheck:
+      # NFS stale file handle이면 stat()이 실패해서 `test -d`가 non-zero를
+      # 반환한다 (2026-09-28 인시던트에서 실제로 발생한 실패 모드).
+      test: ["CMD-SHELL", "test -d /usr/share/nginx/html || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   watch-gallery:
     image: watch-gallery
@@ -115,3 +123,10 @@ services:
       - SERVE_DIR=/serve
     volumes:
       - /mnt/nfs/temp/watch-gallery:/serve
+    healthcheck:
+      # watch-gallery-nginx와 같은 이유로 SERVE_DIR(/serve)의 stat()을 확인한다.
+      test: ["CMD", "python", "-c", "import pathlib,sys; sys.exit(0 if pathlib.Path('/serve').is_dir() else 1)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

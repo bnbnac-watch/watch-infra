@@ -1,0 +1,11 @@
+[Unit]
+Description=Restart unhealthy Docker containers (watch-infra)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=bnbnac
+WorkingDirectory=~
+TimeoutStartSec=4min
+ExecStart=/bin/bash watch-infra/scripts/autoheal.sh
