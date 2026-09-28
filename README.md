@@ -152,7 +152,9 @@ docker compose up -d --no-deps <service>
 
 이를 잡기 위해 두 서비스에 `stat()` 기반 healthcheck를 추가했고, `systemd/docker-autoheal.timer`가
 5분마다 `scripts/autoheal.sh`를 돌려 `docker ps --filter health=unhealthy`로 잡히는 컨테이너를
-자동 재시작한다.
+자동 재시작한다. `com.docker.compose.project=watch-infra` 라벨로 걸러서 이 compose 프로젝트
+소속 컨테이너만 건드리고, 같은 N2+ 호스트의 다른 프로젝트(예: 별도로 이미 unhealthy인
+`honeymoon-note-app`)는 건드리지 않는다.
 
 **최초 설치 (1회, 수동)**: 이 유닛 파일은 거의 바뀔 일이 없어서 배포 파이프라인(`apply.sh`)에
 넣지 않고 수동으로 설치한다 — CI가 매 배포마다 무인으로 `sudo`를 실행하게 만들 이유가 없다고
