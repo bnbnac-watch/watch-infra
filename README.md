@@ -141,6 +141,21 @@ async_jobs          -- generic async job tracking 테이블. 요약 job/callback
 docker compose up -d --no-deps <service>
 ```
 
+## Autoheal (unhealthy 컨테이너 자동 재시작)
+
+`watch-gallery`, `watch-gallery-nginx`는 `/mnt/nfs/temp/watch-gallery`(HC4가 export하는 NFS)에
+의존한다. HC4가 재부팅되면 NFS 서버가 내려갔다 올라오는데, **이미 떠 있던 컨테이너는 그 시점의
+파일 핸들을 그대로 캐시하고 있어서 호스트의 마운트가 복구돼도 컨테이너 안에서는 영영
+`Stale file handle`(Errno 116) 상태로 남는다** — 프로세스가 죽지 않으므로
+`restart: unless-stopped`도 발동하지 않는다 (2026-09-28 밥플러스 그리드 이미지 알림 누락 인시던트
+원인).
+
+이를 잡기 위해 두 서비스에 `stat()` 기반 healthcheck를 추가했고, `systemd/docker-autoheal.timer`가
+5분마다 `scripts/autoheal.sh`를 돌려 `docker ps --filter health=unhealthy`로 잡히는 컨테이너를
+자동 재시작한다. 유닛은 `apply.sh`가 배포 때마다 (재)설치한다.
+
+**HC4 재부팅 후 확인할 것**: `docker inspect --format='{{.State.Health.Status}}' watch-infra-watch-gallery-1 watch-infra-watch-gallery-nginx-1` — `unhealthy`가 5분 넘게 지속되면 `systemctl status docker-autoheal.timer`로 타이머 자체가 살아있는지 먼저 확인.
+
 ## 알려진 미해결 항목
 
 `todo.md` 참고 — batch_group 내 schedule 불일치 무경고 처리, DND(방해금지 시간), destination별 알림 coalescing, watch-ai Gemini fileData API 직접 호출.
