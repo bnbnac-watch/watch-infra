@@ -317,3 +317,7 @@ git commit -m "docs: docker-autoheal 메커니즘 문서화"
 - **플레이스홀더 스캔**: 없음 — 모든 스텝에 실제 파일 내용/명령 포함.
 - **일관성**: 컨테이너 이름(`watch-infra-watch-gallery-1` 등)은 실제 `docker ps` 출력에서 확인된 이름과 동일하게 사용. `scripts/autoheal.sh` 경로는 Task 2와 Task 3(`%h/watch-infra/scripts/autoheal.sh`)에서 일치.
 - **미해결 리스크**: Task 4의 passwordless sudo 여부는 실행 시점에 처음 확인됨 — Step 1에서 막히면 그 태스크만 범위를 수동 설치로 축소.
+
+## 실행 후 정정 사항 (2026-09-28, 최종 리뷰에서 발견)
+
+Global Constraints의 "systemd 유닛의 `ExecStart` 경로는... `User=`+`%h` specifier로 홈 디렉토리를 참조한다" 항목은 **틀렸다**. `%h`는 시스템 유닛(`--user` 유닛이 아닌)에서는 `User=`와 무관하게 `/root`로 풀린다 — 이 계획대로 구현했다면 `docker-autoheal.service`는 매번 `203/EXEC`로 조용히 실패했을 것이다. 실제로 동작하려면 `WorkingDirectory=~`(이건 `User=`를 따라간다)를 쓰고 `ExecStart`는 그 기준 상대경로로 써야 한다. 이 패턴을 다른 systemd 유닛 작업에 재사용하지 말 것.

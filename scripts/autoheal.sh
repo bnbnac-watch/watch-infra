@@ -9,5 +9,5 @@ set -euo pipefail
 for cid in $(docker ps --filter health=unhealthy --format '{{.ID}}'); do
   name=$(docker inspect --format '{{.Name}}' "$cid" | sed 's#^/##')
   logger -t docker-autoheal "unhealthy 컨테이너 감지: ${name} (${cid}) - 재시작"
-  docker restart "$cid"
+  docker restart "$cid" || logger -t docker-autoheal "재시작 실패: ${name} (${cid})"
 done
