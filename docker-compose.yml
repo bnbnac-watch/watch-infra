@@ -48,6 +48,8 @@ services:
     image: crawler-workhub
     restart: unless-stopped
     init: true
+    environment:
+      - NAVER_OPEN_URL=${NAVER_OPEN_URL:-}
     depends_on:
       - watch-playwright
 
