@@ -62,6 +62,13 @@ watch-runner는 이제 job submission 기반 async 처리로 전환되어 요약
 **`watch-gallery`를 별도 정적 파일 서버(`watch-gallery-nginx`)와 짝지은 이유**
 크롤러가 추출한 이미지를 그리드로 합쳐 잠깐 퍼블릭 인터넷에 노출하고 Slack에 공유하기 위한 서비스다. 이미지를 서빙하는 역할과 그리드를 만들고 보관을 관리하는 역할을 한 컨테이너에 합치지 않고, `watch-gallery-nginx`(상시 켜진 정적 파일 서버)와 `watch-gallery`(그리드 생성 API)로 나눴다 — `watch-gallery`가 재시작되거나 잠깐 죽어도 이미 만들어둔 이미지의 서빙 자체는 끊기지 않는다. `PUBLIC_DOMAIN`(OCI 게이트웨이 + duckdns) 경로는 이 nginx로 한 번만 연결해두면 되고, `watch-gallery` 쪽 코드는 서버 기동/중지를 신경 쓸 필요가 없다.
 
+**그리드 이미지 링크의 TLS와 `watch-gallery-nginx` 업데이트**
+`PUBLIC_DOMAIN`(duckdns) 경로의 HTTPS는 OCI 게이트웨이의 nginx가 종단하고, 거기서 WireGuard 터널로 N2+의 `watch-gallery-nginx`(`8000`)에 평문 HTTP로 넘긴다. 그래서 이 컨테이너와 N2+에는 인증서가 없고, OCI의 인증서가 만료되면 이미지 파일이 멀쩡해도 링크가 브라우저와 Slack에서 인증서 오류로 열리지 않는다(2026-11-19 사고, 상세는 `homelab-infra` README의 인증서 절). `watch-gallery-nginx`도 `nginx:alpine`이라는 움직이는 태그를 쓰므로 직접 받아야 갱신된다. N2+에서:
+```bash
+cd ~/watch-infra && docker compose pull watch-gallery-nginx && docker compose up -d --no-deps watch-gallery-nginx
+```
+서비스 이름과 `--no-deps`를 붙여 이 컨테이너만 다시 만든다. 이미지 서빙이 몇 초 끊기고, 헬스체크가 NFS 마운트를 보므로 재생성 후 `healthy`가 되는지 확인한다. 2026-11-20에 1.31.4 → 1.31.9로 올렸다.
+
 **`watch-gallery-nginx`에 `init: true`가 없는 이유**
 다른 서비스들과 달리 이건 커스텀 `CMD ["python", "main.py"]`가 아니라 공식 `nginx:alpine` 이미지를 그대로 쓴다. nginx 마스터 프로세스는 PID 1로 동작하도록 설계돼 있어 자체적으로 시그널 처리(graceful shutdown)와 워커 프로세스 reap을 하므로, 다른 서비스들이 `init: true`(tini)를 필요로 하는 이유(재부모화된 좀비 자식 프로세스 방치)가 애초에 적용되지 않는다.
 
